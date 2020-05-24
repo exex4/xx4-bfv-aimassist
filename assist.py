@@ -14,6 +14,7 @@ screensize = ctypes.windll.user32.GetSystemMetrics(0), ctypes.windll.user32.GetS
 
 if __name__ == "__main__":
     print("xx4 aim assist Version %s" % version)
+    print("Thanks to Tormund and jo2305")
 
     if not helpers.is_admin():
         print("- Error: This must be run with admin privileges")
