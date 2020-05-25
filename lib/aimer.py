@@ -77,7 +77,7 @@ class Aimer:
                 for Soldier in data.soldiers:
                     try:
                         w, dw, distance, delta_x, delta_y, Soldier.ptr = self.calcAim(data, Soldier)
-                        if dw > 2:
+                        if dw > 2 and distance < 75:
                             continue
                         max_movement = 550 - (500 * distance / 75)
                         if abs(delta_x) > max_movement or abs(delta_y) > max_movement:
@@ -98,7 +98,7 @@ class Aimer:
             if self.closestSoldier is not None:
                 if cdll.user32.GetAsyncKeyState(0xa4) & 0x8000:
                     mouse.move(self.closestSoldierMovementX, self.closestSoldierMovementY)
-                    time.sleep(0.02)
+                    time.sleep(0.015)
 
     def calcAim(self, data, Soldier):
 
@@ -111,8 +111,8 @@ class Aimer:
         # if dw > 2:
         #     raise Exception
 
-        if distance > 75:
-            raise Exception("distance exceeded")
+        #if distance > 200:
+        #    raise Exception("distance exceeded")
 
         if Soldier.occluded:
             raise Exception("Soldier is occluded")

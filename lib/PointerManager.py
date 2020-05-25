@@ -147,7 +147,7 @@ class PointerManager():
         mem = self.mem
         bucketCount = mem[table].read_uint32(0x10)
         if (bucketCount == 0):
-            print("bucket zero")
+            #print("bucket zero")
             return 0
         elemCount = mem[table].read_uint32(0x14)
         startcount = key % bucketCount
