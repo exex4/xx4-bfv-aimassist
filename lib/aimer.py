@@ -39,6 +39,8 @@ class Aimer:
         cnt = 0
         mouse = Controller()
         self.lastSoldier = 0
+        self.lastX = 0
+        self.lastY = 0
         while 1:
             BFV.process(phandle, cnt)
             cnt += 1
@@ -49,6 +51,7 @@ class Aimer:
             self.closestSoldierMovementX = 0
             self.closestSoldierMovementY = 0
 
+
             if self.lastSoldier is not 0:
                 if cdll.user32.GetAsyncKeyState(0xa4) & 0x8000:
                     found = False
@@ -56,11 +59,14 @@ class Aimer:
                         if self.lastSoldier == Soldier.ptr:
                             found = True
                             try:
-                                w, dw, distance, delta_x, delta_y, Soldier.ptr = self.calcAim(data, Soldier)
+                                w, dw, distance, delta_x, delta_y, Soldier.ptr, x = self.calcAim(data, Soldier)
                                 self.closestDistance = distance
                                 self.closestSoldier = Soldier
-                                self.closestSoldierMovementX = delta_x
-                                self.closestSoldierMovementY = delta_y
+                                self.closestSoldierMovementX = delta_x + (self.lastX * 0.5)
+                                self.closestSoldierMovementY = delta_y + (self.lastY * 0.5)
+                                self.lastX = delta_x
+                                self.lastY = delta_y
+                                #print("x: %s" % delta_x)
                             except Exception as e:
                                 self.lastSoldier = 0
                                 self.closestSoldier = None
@@ -68,20 +74,24 @@ class Aimer:
                     if not found:
                         self.lastSoldier = 0
                         self.closestSoldier = None
+                        self.lastX = 0
+                        self.lastY = 0
                         print("Disengaging: soldier no longer found")
                 else:
                     self.lastSoldier = 0
                     self.closestSoldier = None
+                    self.lastX = 0
+                    self.lastY = 0
                     print("Disengaging: key released")
             else:
                 for Soldier in data.soldiers:
                     try:
-                        w, dw, distance, delta_x, delta_y, Soldier.ptr = self.calcAim(data, Soldier)
-                        if dw > 2 and distance < 75:
+                        w, dw, distance, delta_x, delta_y, Soldier.ptr, x = self.calcAim(data, Soldier)
+                        if dw > 2 and distance < 50:
                             continue
-                        max_movement = 550 - (500 * distance / 75)
-                        if abs(delta_x) > max_movement or abs(delta_y) > max_movement:
-                            continue
+                        max_movement = 600 - (500 * distance / 150)
+                        # if abs(delta_x) > max_movement or abs(delta_y) > max_movement:
+                        #     continue
                         if dw < self.closestDistance:
                             if cdll.user32.GetAsyncKeyState(0xa4) & 0x8000:
                                 self.closestDistance = distance
@@ -89,6 +99,8 @@ class Aimer:
                                 self.closestSoldierMovementX = delta_x
                                 self.closestSoldierMovementY = delta_y
                                 self.lastSoldier = Soldier.ptr
+                                self.lastX = delta_x
+                                self.lastY = delta_y
 
                     except:
                         continue
@@ -97,8 +109,11 @@ class Aimer:
 
             if self.closestSoldier is not None:
                 if cdll.user32.GetAsyncKeyState(0xa4) & 0x8000:
-                    mouse.move(self.closestSoldierMovementX, self.closestSoldierMovementY)
-                    time.sleep(0.015)
+                    if self.closestSoldierMovementX > 500 or self.closestSoldierMovementY > 500:
+                        pass
+                    else:
+                        mouse.move(self.closestSoldierMovementX, self.closestSoldierMovementY)
+                        time.sleep(0.015)
 
     def calcAim(self, data, Soldier):
 
@@ -117,15 +132,15 @@ class Aimer:
         if Soldier.occluded:
             raise Exception("Soldier is occluded")
 
-        delta_x = (1280 - x) * -1
-        delta_y = (720 - y) * -1
+        delta_x = (self.screensize[0] / 2 - x) * -1
+        delta_y = (self.screensize[1] / 2 - y) * -1
 
         # max_movement = 550 - (500 * distance / 75)
         # if abs(delta_x) > max_movement or abs(delta_y) > max_movement:
         #     # print ("Skipping")
         #     raise Exception
 
-        return w, dw, distance, delta_x / 2, delta_y / 2, Soldier.ptr
+        return w, dw, distance, delta_x / 2, delta_y / 2, Soldier.ptr, x
 
 
     def FindDistance(self, d_x, d_y, d_z, l_x, l_y, l_z):

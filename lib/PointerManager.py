@@ -3,6 +3,22 @@ from lib import offsets
 from lib.MemAccess import *
 
 
+def isValid(addr):
+    return ((addr >= 0x10000) and (addr < 0x0000001000000000))
+
+
+def isValidInGame(addr):
+    return ((addr >= 0x140000000) and (addr < 0x14FFFFFFF))
+
+
+def numOfZeros(value):
+    tmp = value
+    ret = 0;
+    for i in range(8):
+        if (((tmp >> (i * 8)) & 0xFF) == 0x00):
+            ret += 1
+    return ret
+
 class PointerManager():
     badobfus = 0
     def __init__(self, pHandle):
@@ -35,85 +51,76 @@ class PointerManager():
 
     def GetObfuscationMgr(self):
         api._cache_en = False
-        print("[+] Searching for ObfuscationMgr...", flush=True)
+        print("[+] Searching for ObfuscationMgr...")
         addr = -1
         OM = 0
         ss = StackAccess(self.pHandle, self.mem[offsets.PROTECTED_THREAD].read_uint32(0))
         while (1):
-            #print("finding obfus while ignoring %x" % offsets.badobfus)
             addr = -1
-            time.sleep(0.1)
+            time.sleep(0.01)
             buf = ss.read()
-            addr = buf.find(b"\x12\x69\xa3\xd7\xef\x47\x84\x59")
-            if (addr == -1):
-                addr = buf.find(b"\xae\x15\x75\xa7\x6e\x35\xe4\x2c")
-            if (addr > -1):
-                for i in range(-160, 160, 8):
-                    testptr = int.from_bytes(buf[addr + i:addr + 8 + i], "little")
-                    if self.mem[testptr - 0x120].read_uint64(0x0) == offsets.OBFUS_MGR_PTR_1:
-                        OM = testptr - 0x120
-                        #if OM != offsets.badobfus:
-                        self.OBFUS_MGR = OM
-                        break
-                        #else:
-                        #    print("not accepting obfus1")
-                    elif self.mem[testptr].read_uint64(0x0) == offsets.OBFUS_MGR_PTR_1:
+
+            for i in range(0, len(buf), 8):
+                testptr = int.from_bytes(buf[i:i + 8], "little")
+                if (isValid(testptr)):
+                    if self.mem[testptr].read_uint64(0x0) == offsets.OBFUS_MGR_PTR_1:
                         OM = testptr
-                        #if not OM == offsets.badobfus:
-                        self.OBFUS_MGR = OM
+                        self.OBFUS_MGR = testptr
                         break
-                        #else:
-                        #    print("not accepting obfus2")
-                if (OM > 0):
-                    #if OM == offsets.badobfus:
-                    #    print("not accepting obfus3")
-                    #else:
-                    break
 
-
+            if (OM > 0): break
         ss.close()
-        print("[+] Found ObfuscationMgr @ 0x%08x " % OM, flush=True)
+        print("[+] Found ObfuscationMgr @ 0x%08x " % (OM))
         api._cache_en = True
         return OM
 
     def GetDx11Secret(self):
+        def TestDx11Secret(self, testkey):
+            mem = self.mem
+            typeinfo = offsets.ClientStaticModelEntity
+
+            flink = mem[typeinfo].read_uint64(0x88)
+
+            ObfManager = self.OBFUS_MGR
+            HashTableKey = mem[typeinfo](0).me() ^ mem[ObfManager].read_uint64(0xE0)
+
+            hashtable = ObfManager + 0x78
+            EncryptionKey = self.hashtable_find(hashtable, HashTableKey)
+
+            if (EncryptionKey == 0):
+                return 0
+
+            EncryptionKey ^= testkey
+            ptr = PointerManager.decrypt_ptr(flink, EncryptionKey)
+            if (isValid(ptr)):
+                return True
+            else:
+                return False
+
         api._cache_en = False
+        if (TestDx11Secret(self, offsets.Dx11Secret)):
+            api._cache_en = True
+            return offsets.Dx11Secret
         ss = StackAccess(self.pHandle, self.mem[offsets.PROTECTED_THREAD].read_uint32(0))
-        if self.mem[self.OBFUS_MGR].read_uint64(0x100) != 0:
+        if (self.mem[self.OBFUS_MGR].read_uint64(0x100) != 0):
             addr = -1
             OM = 0
             i = 0
-            print("Doing Dx11 stuff", flush=True)
-            xxx = 0
-            final = ss.stack_size
             while (1):
                 addr = -1
-                time.sleep(0.1)
+                time.sleep(0.01)
                 buf = ss.read()
-                if xxx >= final:
-                    print("Resetting xxx to 0, greater than final")
-                    xxx = 0
-
-                addr = buf.find((offsets.OBFUS_MGR_RET_1).to_bytes(8, byteorder='little'), xxx)
-                if (addr > -1):
-                    print("Found OBFUS_MGR_RET_1 at 0x%08x" % addr, flush=True)
-                    print("OBFUS_MGR: 0x%08x" % offsets.OBFUS_MGR)
-                    i = -120
-                    if (int.from_bytes(buf[addr + i:addr + i + 8], "little") == offsets.OBFUS_MGR):
-                        i = -56
-                        testptr = int.from_bytes(buf[addr + i:addr + 8 + i], "little")
-                        # print("testptr 0x%16x" % testptr, flush=True)
-                        if (testptr > 0x100000000000000):
-                            if (testptr == offsets.Dx11Secret):
-                                continue
+                addr = buf.find((offsets.OBFUS_MGR_RET_1).to_bytes(8, byteorder='little'))
+                while (addr > -1):
+                    i = 24
+                    testptr = int.from_bytes(buf[addr + i:addr + i + 8], "little")
+                    if (TestDx11Secret(self, testptr)):
+                        if (testptr != offsets.Dx11Secret):
                             offsets.Dx11Secret = testptr
                             api._cache_en = True
                             ss.close()
                             return offsets.Dx11Secret
-                        else:
-                            print("Incrementing xxx to 0x%8x" % xxx)
-                            xxx = addr
-
+                    addr = buf.find((offsets.OBFUS_MGR_RET_1).to_bytes(8, byteorder='little'), addr + 8)
         else:
             offsets.Dx11Secret = 0
             api._cache_en = True
@@ -161,7 +168,8 @@ class PointerManager():
         while 1:
             first = mem[node].read_uint64(0x0)
             second = mem[node].read_uint64(0x8)
-            next = mem[node].read_uint64(0x16)
+            #next = mem[node].read_uint64(0x16)
+            next = mem[node].read_uint64(0x10)
 
             if first == key:
                 #print ("Key: 0x%016x Node: 0x%016x"%(key^ mem[self.OBFUS_MGR].read_uint64(0xE0),node))
