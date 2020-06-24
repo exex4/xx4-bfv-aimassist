@@ -193,8 +193,8 @@ def process(pHandle, cnt):
         #    print("BCC address: %x" % BoneCollisionComponent.me())
         #Head = BoneCollisionComponent(0x20).read_vec4(4*0x20) # spine?
         Head = mem[Soldier](0x6e0)(0x20).read_vec4(8 * 0x20)
-        Spine = mem[Soldier](0x6e0)(0x20).read_vec4(4 * 0x20)
-        Neck = mem[Soldier](0x6e0)(0x20).read_vec4(6 * 0x20)
+        #Spine = mem[Soldier](0x6e0)(0x20).read_vec4(4 * 0x20)
+        #Neck = mem[Soldier](0x6e0)(0x20).read_vec4(6 * 0x20)
 
         #if Soldier == 0x1679b5900:
             #print("Head address: %x" % Head.me())
@@ -205,6 +205,6 @@ def process(pHandle, cnt):
         SoldierData.transform = Transform
         SoldierData.occluded = occluded
         SoldierData.head = Head
-        SoldierData.spine = Spine
-        SoldierData.neck = Neck
+        #SoldierData.spine = Spine
+        #SoldierData.neck = Neck
         gamedata.AddSoldier(SoldierData)
