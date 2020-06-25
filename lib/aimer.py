@@ -76,6 +76,12 @@ class Aimer:
                     for Soldier in data.soldiers:
                         if self.lastSoldier == Soldier.ptr:
                             found = True
+                            if Soldier.occluded:
+                                self.lastSoldier = 0
+                                self.closestSoldier = None
+                                self.lastX = 0
+                                self.lastY = 0
+                                continue
                             try:
                                 dw, distance, delta_x, delta_y, Soldier.ptr, dfc = self.calcAim(data, Soldier)
                                 self.closestDistance = dfc
