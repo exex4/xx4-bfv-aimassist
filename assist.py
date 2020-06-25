@@ -29,7 +29,7 @@ screensize = ctypes.windll.user32.GetSystemMetrics(0), ctypes.windll.user32.GetS
 
 
 
-version = "0.2"
+version = "0.3"
 
 if fov < 0.1 or fov > 3.0:  # you can delete this if you know what you're doing
     print("Check your fov setting.")
