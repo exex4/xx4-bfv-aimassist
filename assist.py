@@ -1,6 +1,7 @@
 from lib import aimer
 from lib import helpers
 from lib import keycodes
+from lib.bones import bones
 import ctypes
 
 #### CHANGE OPTIONS HERE ####
@@ -18,6 +19,16 @@ distance_limit = None
 # Grab your preferred button from lib/keycodes.py
 trigger = keycodes.LALT
 
+
+# Aim Location Options
+# Aim Location Switching (default is the first one listed)
+# Check available bones in lib/bones.py
+aim_locations = [bones['Head'], bones['Spine'], bones['Neck'], bones['Hips']]
+
+# Key to switch aim location (set to None to disable)
+aim_switch = keycodes.END
+#aim_switch = None
+
 # Normally, you won't need to change this
 # This will attempt to gather your primary screen size. If you have issues or use
 # a windowed version of BFV, you'll need to set this yourself, which probably comes with its own issues
@@ -29,7 +40,7 @@ screensize = ctypes.windll.user32.GetSystemMetrics(0), ctypes.windll.user32.GetS
 
 
 
-version = "0.3"
+version = "0.4"
 
 if fov < 0.1 or fov > 3.0:  # you can delete this if you know what you're doing
     print("Check your fov setting.")
@@ -59,6 +70,6 @@ if __name__ == "__main__":
         exit(1)
 
     print ("Using screensize: %s x %s" % screensize)
-    aimer = aimer.Aimer(screensize, trigger, distance_limit, fov)
+    aimer = aimer.Aimer(screensize, trigger, distance_limit, fov, aim_locations, aim_switch)
     aimer.start()
 

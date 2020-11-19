@@ -2,7 +2,8 @@ from lib import MemAccess
 from lib.MemAccess import *
 from lib.PointerManager import PointerManager
 from lib import offsets
-
+playerVelocities = {}
+lastAccel = {}
 
 class GameData:
     myplayer = 0
@@ -11,6 +12,11 @@ class GameData:
     myvehicle = 0
     myviewmatrix = 0
     mytransform = 0
+    mydrag = 0
+    mygravity = 0
+    myinitialspeed = 0
+    mypositionoffset = 0
+
 
     def __init__(self):
         self.soldiers = []
@@ -26,9 +32,12 @@ class GameSoldierData:
     transform = None
     ptr = 0
     occluded = 0
-    head = 0
-    spine = 0
-    neck = 0
+    #head = 0
+    #spine = 0
+    #neck = 0
+    aim = 0
+    clan = ""
+    name = ""
 
 
 gamedata = GameData()
@@ -111,7 +120,7 @@ def GetEncKey(pHandle, typeinfo):
     keystore[typeinfo] = key
 
     api._cache_en = cache_en
-    print("+ Typeinfo: 0x%x Encryption Key: 0x%x" % (typeinfo, keystore[typeinfo]), flush=True)
+    print("[+] Typeinfo: 0x%x Encryption Key: 0x%x" % (typeinfo, keystore[typeinfo]), flush=True)
     return keystore[typeinfo]
 
 
@@ -138,7 +147,7 @@ def DebugPrintMatrix(mat):
     print("[%.3f %.3f %.3f %.3f ]\n" % (mat[3][0], mat[3][1], mat[3][2], mat[3][3]))
 
 
-def process(pHandle, cnt):
+def process(pHandle, cnt, aim_location):
     api._access = 0
     # api._cache_en = True
     del api._cache
@@ -159,7 +168,7 @@ def process(pHandle, cnt):
     # MyVehicle = mem[MyPlayer].weakptr(offsets.ClientPlayer_Vehicle).me()
     MyViewmatrix = mem[offsets.GAMERENDERER]()(offsets.GameRenderer_RenderView).read_mat4(offsets.RenderView_ViewMatrix)
     MyTransform = GetEntityTransform(pHandle, MySoldier)
-    # MyPos = GetEntityVec4(pHandle, MySoldier)
+    #MyPos = GetEntityVec4(pHandle, MySoldier)
 
     gamedata.myviewmatrix = MyViewmatrix
     gamedata.mytransform = MyTransform
@@ -169,42 +178,84 @@ def process(pHandle, cnt):
     for Soldier in GetEntityList(pHandle, offsets.ClientSoldierEntity, 0xF0):
         if Soldier == MySoldier:
             #print("Me: %x" % Soldier)
+
+            ClientSoldierWeapon = mem[Soldier].weakptr(0x0A48)
+            WeaponFiring = ClientSoldierWeapon(0x5F48)
+            WeaponFiringData = WeaponFiring(0x130)
+            ShotConfigData = WeaponFiringData(0x18)
+            initial_speed = ShotConfigData.read_vec4(0xA0)
+            position_offset = ShotConfigData.read_vec4(0xB0)
+            BulletEntityData = ShotConfigData(0xF8)
+            gravity = BulletEntityData.read_float(0x168)
+            drag = BulletEntityData.read_float(0x16C)
+
+            #prediction_encrypted_key = mem[Soldier].read_uint64(0x810)
+            #prediction = pm.decrypt_ptr(mem[Soldier].read_uint64(0x810), pm.GetEntityKey(mem[]))
+            #print("0x%x" % prediction_encrypted_key)
+
+            gamedata.mydrag = drag
+            gamedata.mygravity = gravity
+            gamedata.myinitialspeed = initial_speed
+            gamedata.mypositionoffset = position_offset
+            if Soldier not in playerVelocities:
+                playerVelocities[Soldier] = MyTransform[3]
+            last = playerVelocities[Soldier]
+            try:
+                accel = [MyTransform[3][0] - last[0], MyTransform[3][1] - last[1], MyTransform[3][2] - last[2]]
+            except:
+                accel = [0, 0, 0]
+
+            # # if Soldier == 0x13fe34ce0:
+            # #    print(accel)
+            playerVelocities[Soldier] = MyTransform[3]
+
+
+            gamedata.myaccel = accel
+
+            #print("%s %s" % (drag, gravity))
+
             continue
-        #print("Soldier %x" % Soldier)
+        #prediction_encrypted_key = mem[Soldier].read_uint64(0x860)
+        #ClientSoldierPrediction = pm.DecryptPointer(prediction_encrypted_key, Soldier)
+
         if mem[Soldier](offsets.CSE_Player).me() == 0:
             continue
         if mem[Soldier](offsets.CSE_Player).read_uint32(offsets.ClientPlayer_TeamID) == MyTeamId:
             # Skip if on same team
             continue
         Transform = GetEntityTransform(pHandle, Soldier)
-        #DebugPrintMatrix(Transform)
         if Transform == 0:
             continue
         occluded = mem[Soldier].read_uint8(offsets.CSE_Occluded)
-        #if occluded == 1:
-        #   continue
         Health = mem[Soldier](offsets.CSE_HealthComponent).read_float(offsets.HC_Health)
         if Health <= 0:
             # skip if dead
             continue
+        name = mem[Soldier](offsets.CSE_Player).read_string(0x40)
+        clan = mem[Soldier](offsets.CSE_Player).read_string(0x2859)
+        aim = mem[Soldier](0x6e0)(0x20).read_vec4(aim_location * 0x20)
 
-        #BoneCollisionComponent = mem[Soldier](0x6e0)
-        #if Soldier == 0x1679b5900:
-        #    print("BCC address: %x" % BoneCollisionComponent.me())
-        #Head = BoneCollisionComponent(0x20).read_vec4(4*0x20) # spine?
-        Head = mem[Soldier](0x6e0)(0x20).read_vec4(8 * 0x20)
-        #Spine = mem[Soldier](0x6e0)(0x20).read_vec4(4 * 0x20)
-        #Neck = mem[Soldier](0x6e0)(0x20).read_vec4(6 * 0x20)
+        if Soldier not in playerVelocities:
+            playerVelocities[Soldier] = aim
 
-        #if Soldier == 0x1679b5900:
-            #print("Head address: %x" % Head.me())
-            #DebugPrintMatrix(Head)
+        last = playerVelocities[Soldier]
+        #if cnt % 16 == 0:
+
+        try:
+            accel = [(aim[0] - last[0]) / 2, (aim[1] - last[1]) /2, (aim[2] - last[2]) /2]
+        except:
+            accel = [0, 0, 0]
+
+        playerVelocities[Soldier] = aim
+
+
 
         SoldierData = GameSoldierData()
         SoldierData.ptr = Soldier
         SoldierData.transform = Transform
         SoldierData.occluded = occluded
-        SoldierData.head = Head
-        #SoldierData.spine = Spine
-        #SoldierData.neck = Neck
+        SoldierData.aim = aim
+        SoldierData.accel = accel
+        SoldierData.clan = clan
+        SoldierData.name = name
         gamedata.AddSoldier(SoldierData)

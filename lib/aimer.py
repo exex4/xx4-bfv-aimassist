@@ -1,4 +1,5 @@
 from lib import BFV
+from lib.bones import bones
 import time
 import math
 from ctypes import *
@@ -15,11 +16,13 @@ class Aimer:
     lastSoldier = 0
     screensize = (0, 0)
 
-    def __init__(self, screensize, trigger, distance_limit, fov):
+    def __init__(self, screensize, trigger, distance_limit, fov, aim_locations, aim_switch):
         self.screensize = screensize
         self.trigger = trigger
         self.distance_limit = distance_limit
         self.fov = fov
+        self.aim_locations = aim_locations
+        self.aim_switch = aim_switch
 
     def DebugPrintMatrix(self, mat):
         print("[%.3f %.3f %.3f %.3f ]" % (mat[0][0], mat[0][1], mat[0][2], mat[0][3]))
@@ -45,23 +48,47 @@ class Aimer:
         # return 0.0 + (distance - 0) / 20 * 100
 
     def start(self):
-        print("+ Searching for BFV.exe")
+        print("[+] Searching for BFV.exe")
         phandle = BFV.get_handle()
         if phandle:
             time.sleep(1)
         else:
-            print("- Error: Cannot find BFV.exe")
+            print("[-] Error: Cannot find BFV.exe")
             exit(1)
 
-        print("+ BFV.exe found, Handle 0x%x" % phandle)
+        print("[+] BFV.exe found, Handle 0x%x" % phandle)
         cnt = 0
         # mouse = Controller()
         self.lastSoldier = 0
         self.lastX = 0
         self.lastY = 0
+        aim_location_index = 0
+        aim_location_max = len(self.aim_locations) - 1
+        aim_switch_pressed = False
+
+        aim_location_names = []
+        for location in self.aim_locations:
+            for key in bones:
+                if bones[key] == location:
+                    aim_location_names.append(key)
+
         # m = Mouse()
         while 1:
-            BFV.process(phandle, cnt)
+
+            #change aim location index if key is pressed
+            if self.aim_switch is not None:
+                if cdll.user32.GetAsyncKeyState(self.aim_switch) & 0x8000:
+                    aim_switch_pressed = True
+                elif aim_switch_pressed:
+                    aim_switch_pressed = False
+                    aim_location_index = aim_location_index + 1
+                    if aim_location_index > aim_location_max:
+                        aim_location_index = 0
+
+
+
+
+            BFV.process(phandle, cnt, self.aim_locations[aim_location_index])
             cnt += 1
 
             data = BFV.gamedata
@@ -86,36 +113,34 @@ class Aimer:
                                 dw, distance, delta_x, delta_y, Soldier.ptr, dfc = self.calcAim(data, Soldier)
                                 self.closestDistance = dfc
                                 self.closestSoldier = Soldier
-                                # accel = self.accelDistance(distance)
-                                # print(accel)
-                                accel = 0  # this is WIP
-                                self.closestSoldierMovementX = delta_x + (self.lastX * accel)
-                                self.closestSoldierMovementY = delta_y + (self.lastY * accel)
+
+                                #accel = 0  # this is WIP
+                                self.closestSoldierMovementX = delta_x# + (self.lastX * accel)
+                                self.closestSoldierMovementY = delta_y# + (self.lastY * accel)
                                 self.lastX = delta_x
                                 self.lastY = delta_y
                                 # print("x: %s" % delta_x)
                             except Exception as e:
                                 self.lastSoldier = 0
                                 self.closestSoldier = None
-                                print("Disengaging: soldier no longer meets criteria: %s" % e)
+                                #print("Disengaging: soldier no longer meets criteria: %s" % e)
                     if not found:
                         self.lastSoldier = 0
                         self.closestSoldier = None
                         self.lastX = 0
                         self.lastY = 0
-                        print("Disengaging: soldier no longer found")
+                        #print("Disengaging: soldier no longer found")
                 else:
                     self.lastSoldier = 0
                     self.closestSoldier = None
                     self.lastX = 0
                     self.lastY = 0
-                    print("Disengaging: key released")
+                    #print("Disengaging: key released")
             else:
                 for Soldier in data.soldiers:
                     try:
                         dw, distance, delta_x, delta_y, Soldier.ptr, dfc = self.calcAim(data, Soldier)
-                        # if Soldier.ptr == 0x1d66c06f0 or Soldier.ptr == 0x183ba54b0:
-                        #    print("Soldier: %s is dfc: %s, distance is %s" % (hex(Soldier.ptr), dfc, distance))
+
                         if dw > self.fov:
                             continue
                         if Soldier.occluded:
@@ -126,33 +151,39 @@ class Aimer:
 
                         if dfc < self.closestDistance:  # is actually comparing dfc, not distance
                             if cdll.user32.GetAsyncKeyState(self.trigger) & 0x8000:
-                                # print("COMPARE - Soldier: %s is dfc: %s, distance is %s" % (hex(Soldier.ptr), dfc, distance))
                                 self.closestDistance = dfc
                                 self.closestSoldier = Soldier
                                 self.closestSoldierMovementX = delta_x
                                 self.closestSoldierMovementY = delta_y
                                 self.lastSoldier = Soldier.ptr
+                                self.lastSoldierObject = Soldier
                                 self.lastX = delta_x
                                 self.lastY = delta_y
 
                     except:
                         # print("Exception", sys.exc_info()[0])
                         continue
+                status = "[%s] " % aim_location_names[aim_location_index]
                 if self.lastSoldier != 0:
-                    print("Locking onto soldier: 0x%x" % self.lastSoldier)
-
+                    if self.lastSoldierObject.name != "":
+                        name = self.lastSoldierObject.name
+                        if self.lastSoldierObject.clan != "":
+                            name = "[%s]%s" % (self.lastSoldierObject.clan, name)
+                    else:
+                        name = "0x%x" % self.lastSoldier
+                    status = status + "locked onto %s" % name
+                else:
+                    status = status + "idle"
+                print("%-50s" % status, end="\r")
             if self.closestSoldier is not None:
                 if cdll.user32.GetAsyncKeyState(self.trigger) & 0x8000:
                     if self.closestSoldierMovementX > self.screensize[0] / 2 or self.closestSoldierMovementY > \
                             self.screensize[1] / 2:
-                        if debug: print("continue1")
                         continue
                     else:
                         if abs(self.closestSoldierMovementX) > self.screensize[0]:
-                            if debug: print("continue2")
                             continue
                         if abs(self.closestSoldierMovementY) > self.screensize[1]:
-                            if debug: print("continue3")
                             continue
                         if self.closestSoldierMovementX == 0 and self.closestSoldierMovementY == 0:
                             continue
@@ -161,17 +192,22 @@ class Aimer:
 
                         time.sleep(0.02)
 
+
     def calcAim(self, data, Soldier):
 
-        transform = Soldier.head
+        transform = Soldier.aim
+
+        transform[0] = transform[0] + Soldier.accel[0] - data.myaccel[0]
+        transform[1] = transform[1] + Soldier.accel[1] - data.myaccel[1]
+        transform[2] = transform[2] + Soldier.accel[2] - data.myaccel[2]
+
+
         x, y, w = self.World2Screen(data.myviewmatrix, transform[0], transform[1], transform[2])
+
         distance = self.FindDistance(Soldier.transform[3][0], Soldier.transform[3][1], Soldier.transform[3][2],
                                      data.mytransform[3][0], data.mytransform[3][1], data.mytransform[3][2])
 
         dw = distance - w
-
-        # if Soldier.occluded:
-        #     raise Exception("Soldier is occluded")
 
         delta_x = (self.screensize[0] / 2 - x) * -1
         delta_y = (self.screensize[1] / 2 - y) * -1
@@ -203,10 +239,10 @@ class Aimer:
 
         return x, y, w
 
-    def current_mouse_position(self):
-        cursor = POINT()
-        windll.user32.GetCursorPos(byref(cursor))
-        return cursor.x, cursor.y
+    # def current_mouse_position(self):
+    #     cursor = POINT()
+    #     windll.user32.GetCursorPos(byref(cursor))
+    #     return cursor.x, cursor.y
 
     def move_mouse(self, x, y):  # relative
         ii = Input_I()

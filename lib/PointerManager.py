@@ -24,7 +24,7 @@ class PointerManager():
     def __init__(self, pHandle):
         self.mem = MemAccess(pHandle)
         self.pHandle = pHandle
-
+        self.gpumemptr = 0
         self.OBFUS_MGR = 0
         if offsets.OBFUS_MGR == 0:
             offsets.OBFUS_MGR = self.GetObfuscationMgr()
@@ -101,21 +101,38 @@ class PointerManager():
         if (TestDx11Secret(self, offsets.Dx11Secret)):
             api._cache_en = True
             return offsets.Dx11Secret
+
+        if offsets.GPUMemPtr:
+            for offset in range(0, 0x400, 0x100):
+                testptr = self.mem[offsets.GPUMemPtr].read_uint64(offset)
+                if (testptr):
+                    if (TestDx11Secret(self, testptr)):
+                        if (testptr != offsets.Dx11Secret):
+                            print("[+] Found Dx11 key scraping GPU mem @ 0x%x" % (offsets.GPUMemPtr + offset))
+                            offsets.Dx11Secret = testptr
+                            api._cache_en = True
+                            return offsets.Dx11Secret
+            offsets.GPUMemPtr = 0
+
         ss = StackAccess(self.pHandle, self.mem[offsets.PROTECTED_THREAD].read_uint32(0))
         if (self.mem[self.OBFUS_MGR].read_uint64(0x100) != 0):
             addr = -1
             OM = 0
             i = 0
+            print("[+] Locating initial Dx11 key location, please wait...", flush=True)
             while (1):
                 addr = -1
-                time.sleep(0.01)
                 buf = ss.read()
                 addr = buf.find((offsets.OBFUS_MGR_RET_1).to_bytes(8, byteorder='little'))
                 while (addr > -1):
-                    i = 24
-                    testptr = int.from_bytes(buf[addr + i:addr + i + 8], "little")
+                    i = 0x38
+                    gpumem = int.from_bytes(buf[addr + i:addr + i + 8], "little")
+                    testptr = self.mem[gpumem].read_uint64(0x0)
                     if (TestDx11Secret(self, testptr)):
                         if (testptr != offsets.Dx11Secret):
+                            offsets.GPUMemPtr = gpumem & 0xFFFFFFFFFFFFFC00
+                            print("[+] Found Initial Dx11 key scraping GPU mem @ 0x%x" % (offsets.GPUMemPtr),
+                                  flush=True)
                             offsets.Dx11Secret = testptr
                             api._cache_en = True
                             ss.close()
@@ -148,6 +165,7 @@ class PointerManager():
                 offsets.Dx11Secret = 0x598447EFD7A36912
                 print("[+] Static key loaded, root key set to 0x%x" % (offsets.Dx11Secret))
                 offsets.CryptMode = 0
+                self.gpumemptr = 0
         api._cache_en = True
 
     def hashtable_find(self, table, key):
@@ -162,7 +180,7 @@ class PointerManager():
 
 
         if (node == 0):
-            print ("node zero")
+            #print ("node zero")
             return 0
 
         while 1:
