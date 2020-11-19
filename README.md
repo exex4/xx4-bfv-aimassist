@@ -4,4 +4,10 @@
 
 To start: `python assist.py` as Administrator
 
-Currently it uses the `Left Alt` as the binding key. Press and hold this to activate the assist. You may wish to unbind that key in the game.
+Check options in the `assist.py` file:
+* Field of View
+* Distance Limit
+* Trigger (Aim) Button
+* Aim Locations
+* Aim Location Switching Button
+* Screensize (should be ok with default)
